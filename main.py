@@ -21,14 +21,6 @@ def run():
         # Save to image1.jpg and image2.jpg based on URLs
         connection_handler.get_images(image_urls)
 
-        # Get list of transformed images
-        transformed_list = image_editor.get_transforms("image1.jpg", "image2.jpg")
-
-        # Compose final pop art
-        final_image = image_editor.compose(transformed_list)
-
-        return final_image
-
     # If fatal error happens
     except AppError as e:
         # Alert user of error and exit program
