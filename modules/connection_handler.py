@@ -1,90 +1,55 @@
+"""Handles HTTP connections to the NASA APOD API."""
+
 import requests
 
-from modules.globals import *
+from modules.globals import BASE_NASA_URL, NASA_API_KEY, AppError
 
-# Helper function to build the URL for querying the API
+MAX_RETRIES = 3
+DEFAULT_START_DATE = "2024-01-01"
+DEFAULT_END_DATE = "2024-01-31"
+
+
 def build_url(start_date: str, end_date: str) -> str:
-
-    # Default to January 2024 if there is none for either start or end date
+    """Build the NASA APOD API request URL from a date range."""
     if not start_date:
-        start_date = '2024-01-01'
+        start_date = DEFAULT_START_DATE
     if not end_date:
-        end_date = '2024-01-31'
+        end_date = DEFAULT_END_DATE
 
-    # Compiled URL - URL, API, then dates
-    return (BASE_NASA_URL + NASA_API_KEY +
-            "&start_date=" + start_date + "&end_date=" + end_date)
+    return f"{BASE_NASA_URL}{NASA_API_KEY}&start_date={start_date}&end_date={end_date}"
 
 
-# Function to get results from the NASA APOD API
-def get_result(url: str) -> dict:
-    # If connection fails program only tries three times
-    for failures in range(3):
+def get_result(url: str) -> list[dict]:
+    """Fetch APOD results from the NASA API. Retries up to MAX_RETRIES times."""
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
-            # Open connection
             response = requests.get(url)
-
-            # Only get and return response if response code is valid
             if response.status_code == 200:
                 return response.json()
+            print(f"\nRequest failed (attempt {attempt}/{MAX_RETRIES}): HTTP {response.status_code}")
+        except requests.RequestException:
+            print(f"\nConnection failed (attempt {attempt}/{MAX_RETRIES}).")
 
-            # If in any case connection fails - add 1 to counter and continue loop
-            else:
-                # Alert user how many times it failed
-                print("\nConnection failed " +
-                      str(failures + 1) + " times. Trying again...")
-                continue
+    raise AppError("Failed to fetch results from NASA API after multiple attempts.")
 
-        # If in any case connection fails - add 1 to counter and continue loop
-        except Exception:
-            print("\nConnection failed " +
-                  str(failures + 1) + " times. Trying again...")
-            continue
 
-    # If function has reached this point without returning -> connection failed -> raise error
-    raise AppError
-
-# Function to download images based on the filtered results
-def get_images(urls : iter) -> None:
-
-    # We cannot run without two images - raise Error
+def download_images(urls: tuple[str, str]) -> None:
+    """Download two images from the given URLs and save as image1.jpg, image2.jpg."""
     if not urls[0] or not urls[1]:
-        raise ValueError("Not enough URLs!")
+        raise AppError("Not enough image URLs found for the given query.")
 
-    # img tracks which image we're saving
-    img = 1
-    for url in urls:
-
-        # Failure switch for if we fail more than 3 times on either image - True on each iteration
-        is_failure = True
-        for failures in range(3):
+    for index, url in enumerate(urls, start=1):
+        filename = f"image{index}.jpg"
+        for attempt in range(1, MAX_RETRIES + 1):
             try:
-
-                # Connect
                 response = requests.get(url)
-
-                # Only get image if response code is valid
                 if response.status_code == 200:
-
-                    with open("image" + str(img) + ".jpg", 'wb') as file:
-                        file.write(response.content)
-
-                    # Only then do we continue loop and set Failure switch to false
-                    img += 1
-                    is_failure = False
+                    with open(filename, "wb") as f:
+                        f.write(response.content)
+                    print(f"Saved {filename}")
                     break
-
-                # In any case that we fail continue failure loop and update counter
-                else:
-                    print("\nConnection failed " +
-                          str(failures + 1) + " times. Trying again...")
-                    continue
-
-            # In any case that we fail continue failure loop and update counter
-            except Exception as e:
-                print("\nConnection failed " +
-                      str(failures + 1) + " times. Trying again...")
-                continue
-        # Loop only reaches this point if we failed more than 3 times for either image - raise error and exit
-        if is_failure:
-            raise AppError
+                print(f"\nDownload failed for {filename} (attempt {attempt}/{MAX_RETRIES}): HTTP {response.status_code}")
+            except requests.RequestException:
+                print(f"\nDownload failed for {filename} (attempt {attempt}/{MAX_RETRIES}).")
+        else:
+            raise AppError(f"Failed to download {filename} after {MAX_RETRIES} attempts.")
